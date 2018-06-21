@@ -24,9 +24,9 @@ import type { EarnComFees, BitcoinFees } from '../utils/flowTypes.js'
 import { validateObject, promiseAny } from '../utils/utils.js'
 import { parsePayment } from '../utils/paymentRequest.js'
 import { InfoServerFeesSchema } from '../utils/jsonSchemas.js'
-import { calcFeesFromEarnCom, calcMinerFeePerByte } from './miningFees.js'
+import { calcFeesFromEarnCom, calcMinerFeePerByte } from '../utils/miningFees.js'
+import { broadcastFactories } from '../utils/broadcastApi.js'
 import { bns } from 'biggystring'
-import { broadcastFactories } from './broadcastApi.js'
 import {
   addressToScriptHash,
   keysFromWalletInfo,

@@ -7,7 +7,7 @@ import { before, describe, it } from 'mocha'
 import fetch from 'node-fetch'
 import request from 'request'
 
-import * as Factories from '../../src/index.js'
+import * as Factories from '../../../src/index.js'
 import dummyAddressData from './dummyAddressData.json'
 import dummyHeadersData from './dummyHeadersData.json'
 import dummyTransactionsData from './dummyTransactionsData.json'

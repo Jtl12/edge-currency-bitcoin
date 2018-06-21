@@ -1,6 +1,6 @@
 // @flow
 import bcoin from 'bcoin'
-import { hash256, reverseBufferToHex } from './utils.js'
+import { hash256, hash256Sync, reverseBufferToHex } from './utils.js'
 
 export const keysFromWalletInfo = (
   network: string,
@@ -178,4 +178,15 @@ export const parsePath = (path: string, masterPath: string) => {
     return [parseInt(branch), parseInt(index)]
   }
   return []
+}
+
+export function parseTransaction (rawTx: string) {
+  const bcoinTransaction = bcoin.primitives.TX.fromRaw(rawTx, 'hex')
+
+  for (const output of bcoinTransaction.outputs) {
+    const scriptHash = hash256Sync(output.script.toRaw())
+    output.scriptHash = reverseBufferToHex(scriptHash)
+  }
+
+  return bcoinTransaction
 }
