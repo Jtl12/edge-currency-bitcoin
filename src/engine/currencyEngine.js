@@ -28,11 +28,16 @@ import { calcFeesFromEarnCom, calcMinerFeePerByte } from './miningFees.js'
 import { bns } from 'biggystring'
 import { broadcastFactories } from './broadcastApi.js'
 import {
+  addressToScriptHash,
+  keysFromWalletInfo,
+  getAllAddresses,
+  verifyTx
+} from '../utils/coinUtils.js'
+import {
   toLegacyFormat,
   toNewFormat,
   validAddress
 } from '../utils/addressFormat/addressFormatIndex.js'
-import bcoin from 'bcoin'
 
 const BYTES_TO_KB = 1000
 const MILLI_TO_SEC = 1000
@@ -120,7 +125,6 @@ export class CurrencyEngine {
       },
       onAddressesChecked: this.callbacks.onAddressesChecked
     }
-    const gapLimit = this.currencyInfo.defaultSettings.gapLimit
 
     this.engineState = new EngineState({
       files: { txs: 'txs.json', addresses: 'addresses.json' },
@@ -134,46 +138,28 @@ export class CurrencyEngine {
 
     await this.engineState.load()
 
-    const keyManagerCallbacks: KeyManagerCallbacks = {
+    const callbacks: KeyManagerCallbacks = {
       onNewAddress: (scriptHash: string, address: string, path: string) => {
         return this.engineState.addAddress(scriptHash, address, path)
       },
       onNewKey: (keys: any) => this.engineState.saveKeys(keys)
     }
 
-    const rawKeys = await this.engineState.loadKeys()
-    if (!rawKeys.master) {
-      rawKeys.master = {}
-    }
-    if (!rawKeys.master.xpub) {
-      if (this.walletInfo.keys && this.walletInfo.keys[`${this.network}Xpub`]) {
-        rawKeys.master.xpub = this.walletInfo.keys[`${this.network}Xpub`]
-      }
-    }
-    let seed = ''
-    let bip = ''
-    let coinType = -1
-    if (this.walletInfo.keys) {
-      if (this.walletInfo.keys[`${this.network}Key`]) {
-        seed = this.walletInfo.keys[`${this.network}Key`]
-      }
-      if (typeof this.walletInfo.keys.format === 'string') {
-        bip = this.walletInfo.keys.format
-      }
-      if (typeof this.walletInfo.keys.coinType === 'number') {
-        coinType = this.walletInfo.keys.coinType
-      }
-    }
-    bip = bip === '' ? this.walletInfo.type.split('-')[1] : bip
+    const cachedRawKeys = await this.engineState.loadKeys()
+    const { seed, bip, coinType, rawKeys } = keysFromWalletInfo(
+      this.network,
+      this.walletInfo,
+      cachedRawKeys
+    )
 
     this.keyManager = new KeyManager({
       seed: seed,
-      rawKeys: rawKeys,
       bip: bip,
       coinType: coinType,
-      gapLimit: gapLimit,
+      rawKeys: rawKeys,
+      callbacks: callbacks,
+      gapLimit: this.currencyInfo.defaultSettings.gapLimit,
       network: this.network,
-      callbacks: keyManagerCallbacks,
       addressInfos: this.engineState.addressInfos,
       txInfos: this.engineState.parsedTxs
     })
@@ -369,8 +355,10 @@ export class CurrencyEngine {
     log += `Transaction id: ${edgeTransaction.txid}\n`
     log += `Our Receiving addresses are: ${edgeTransaction.ourReceiveAddresses.toString()}\n`
     log += 'Transaction details:\n'
-    const jsonObj = edgeTransaction.otherParams.bcoinTx.getJSON(this.network)
-    log += JSON.stringify(jsonObj, null, 2) + '\n'
+    if (edgeTransaction.otherParams && edgeTransaction.otherParams.bcoinTx) {
+      const jsonObj = edgeTransaction.otherParams.bcoinTx.getJSON(this.network)
+      log += JSON.stringify(jsonObj, null, 2) + '\n'
+    }
     log += '------------------------------------------------------------------'
     console.log(`${this.walletId} - ${log}`)
   }
@@ -462,7 +450,7 @@ export class CurrencyEngine {
     const scriptHashPromises = addresses.map(address => {
       const scriptHash = this.engineState.scriptHashes[address]
       if (typeof scriptHash === 'string') return Promise.resolve(scriptHash)
-      else return this.keyManager.addressToScriptHash(address)
+      else return addressToScriptHash(address)
     })
     Promise.all(scriptHashPromises)
       .then((scriptHashs: Array<string>) => {
@@ -528,22 +516,9 @@ export class CurrencyEngine {
       walletId: this.walletId
     })
 
-    await this.engineState.load()
-
-    for (const key of privateKeys) {
-      const privKey = bcoin.primitives.KeyRing.fromSecret(key, this.network)
-      const keyAddress = privKey.getAddress('base58')
-      privKey.nested = true
-      privKey.witness = true
-      const nestedAddress = privKey.getAddress('base58')
-      const keyHash = await this.keyManager.addressToScriptHash(keyAddress)
-      const nestedHash = await this.keyManager.addressToScriptHash(
-        nestedAddress
-      )
-      engineState.addAddress(keyHash, keyAddress)
-      engineState.addAddress(nestedHash, nestedAddress)
-    }
-
+    await engineState.load()
+    const addresses = await getAllAddresses(privateKeys, this.network)
+    addresses.forEach(address => engineState.addAddress(...address))
     engineState.connect()
 
     return end
@@ -554,9 +529,7 @@ export class CurrencyEngine {
     paymentProtocolURL: string
   ): Promise<EdgePaymentProtocolInfo> {
     try {
-      if (!this.io || !this.io.fetch) {
-        throw new Error('No io/fetch object')
-      }
+      if (!this.io || !this.io.fetch) throw new Error('No io/fetch object')
       const result = await this.io.fetch(paymentProtocolURL)
       const buf = await result.buffer()
       return parsePayment(buf, this.network, this.currencyInfo.currencyCode)
@@ -661,35 +634,20 @@ export class CurrencyEngine {
   async broadcastTx (
     edgeTransaction: EdgeTransaction
   ): Promise<EdgeTransaction> {
-    if (!edgeTransaction.otherParams.bcoinTx) {
-      edgeTransaction.otherParams.bcoinTx = bcoin.primitives.TX.fromRaw(
-        edgeTransaction.signedTx,
-        'hex'
-      )
-    }
+    const { otherParams = {}, signedTx, currencyCode } = edgeTransaction
+    const tx = verifyTx(signedTx, otherParams.bcoinTx)
+    edgeTransaction.otherParams.bcoinTx = tx
     this.logEdgeTransaction(edgeTransaction, 'Broadcasting')
-    for (const output of edgeTransaction.otherParams.bcoinTx.outputs) {
-      if (output.value <= 0 || output.value === '0') {
-        throw new Error('Wrong spend amount')
-      }
-    }
 
     // Try APIs
-    const broadcasters = []
-    if (this.io) {
-      for (const f of broadcastFactories) {
-        const broadcaster = f(this.io, edgeTransaction.currencyCode)
-        if (broadcaster) broadcasters.push(broadcaster)
+    const promiseArray = []
+    if (this.io && this.io.fetch) {
+      for (const broadcastFactory of broadcastFactories) {
+        const broadcaster = broadcastFactory(this.io, currencyCode)
+        if (broadcaster) promiseArray.push(broadcaster(signedTx))
       }
     }
-
-    const promiseArray = []
-
-    for (const broadcaster of broadcasters) {
-      const p = broadcaster(edgeTransaction.signedTx)
-      promiseArray.push(p)
-    }
-    promiseArray.push(this.engineState.broadcastTx(edgeTransaction.signedTx))
+    promiseArray.push(this.engineState.broadcastTx(signedTx))
 
     try {
       await promiseAny(promiseArray)

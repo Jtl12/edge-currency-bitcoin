@@ -17,6 +17,7 @@ import buffer from 'buffer-hack'
 import { CurrencyEngine } from '../engine/currencyEngine.js'
 import { PluginState } from './pluginState.js'
 import { parseUri, encodeUri } from '../utils/uri.js'
+import { getPrivateFromSeed } from '../utils/coinUtils.js'
 
 // $FlowFixMe
 const { Buffer } = buffer
@@ -69,15 +70,7 @@ export class CurrencyPlugin {
     if (!walletInfo.keys) throw new Error('InvalidKeyName')
     const seed = walletInfo.keys[`${this.network}Key`]
     if (!seed) throw new Error('InvalidKeyName')
-    const mnemonic = bcoin.hd.Mnemonic.fromPhrase(seed)
-    // TODO: Allow fromMnemonic to be async. API needs to change -paulvp
-    let privateKey
-    const result = bcoin.hd.PrivateKey.fromMnemonic(mnemonic, this.network)
-    if (typeof result.then === 'function') {
-      privateKey = await Promise.resolve(result)
-    } else {
-      privateKey = result
-    }
+    const privateKey = await getPrivateFromSeed(seed, this.network)
     return {
       [`${this.network}Key`]: walletInfo.keys[`${this.network}Key`],
       [`${this.network}Xpub`]: privateKey.xpubkey()

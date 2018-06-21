@@ -4,7 +4,15 @@ import type { UtxoInfo, AddressInfo, AddressInfos } from './engineState.js'
 // $FlowFixMe
 import buffer from 'buffer-hack'
 import bcoin from 'bcoin'
-import { hash256, reverseBufferToHex } from '../utils/utils.js'
+import {
+  createMasterPath,
+  keysFromRaw,
+  parsePath,
+  getPrivateFromSeed,
+  estimateSize,
+  deriveKeyRing,
+  deriveAddress
+} from '../utils/coinUtils.js'
 import {
   toLegacyFormat,
   toNewFormat
@@ -17,7 +25,6 @@ const RBF_SEQUENCE_NUM = 0xffffffff - 2
 const nop = () => {}
 
 export type Txid = string
-export type WalletType = string
 export type RawTx = string
 export type BlockHeight = number
 
@@ -124,85 +131,31 @@ export class KeyManager {
       throw new Error('Missing Master Key')
     }
     this.seed = seed
-    // Create KeyRing templates
-    this.keys = {
-      master: {
-        pubKey: null,
-        privKey: null,
-        children: []
-      },
-      receive: {
-        pubKey: null,
-        privKey: null,
-        children: []
-      },
-      change: {
-        pubKey: null,
-        privKey: null,
-        children: []
-      }
-    }
-    // Create Locks
-    this.writeLock = new bcoin.utils.Lock()
-
-    // Try to load as many pubKey/privKey as possible from the cache
-    for (const branch in rawKeys) {
-      if (rawKeys[branch].xpriv) {
-        this.keys[branch].privKey = bcoin.hd.PrivateKey.fromBase58(
-          rawKeys[branch].xpriv,
-          this.network
-        )
-      }
-      if (rawKeys[branch].xpub) {
-        this.keys[branch].pubKey = bcoin.hd.PublicKey.fromBase58(
-          rawKeys[branch].xpub,
-          this.network
-        )
-      }
-    }
-    // Create master derivation path from network and bip type
+    this.gapLimit = gapLimit
     this.network = network
     this.bip = bip
-    if (coinType < 0) {
-      coinType = bcoin.network.get(this.network).keyPrefix.coinType
-    }
-    switch (this.bip) {
-      case 'bip32':
-        this.masterPath = 'm/0'
-        break
-      case 'bip44':
-        this.masterPath = `m/44'/${coinType}'/${account}'`
-        break
-      case 'bip49':
-        this.masterPath = `m/49'/${coinType}'/${account}'`
-        break
-      default:
-        throw new Error('Unknown bip type')
-    }
-
-    // Setup gapLimit
-    this.gapLimit = gapLimit
-
+    // Create a lock for when deriving addresses
+    this.writeLock = new bcoin.utils.Lock()
+    // Create the master derivation path
+    this.masterPath = createMasterPath(account, coinType, bip, network)
     // Set the callbacks with nops as default
     const { onNewAddress = nop, onNewKey = nop } = callbacks
     this.onNewAddress = onNewAddress
     this.onNewKey = onNewKey
+    // Set the addresses and txs state objects
     this.addressInfos = addressInfos
     this.txInfos = txInfos
-
+    // Create KeyRings while tring to load as many of the pubKey/privKey from the cache
+    // $FlowFixMe
+    this.keys = keysFromRaw(rawKeys, network)
+    console.log('this.keys', this.keys)
     // Load addresses from Cache
-    for (const scriptHash in this.addressInfos) {
-      const addressObj: AddressInfo = this.addressInfos[scriptHash]
-      const path = addressObj.path
-      const pathSuffix = path.split(this.masterPath + '/')[1]
-      if (pathSuffix) {
-        let [branch, index] = pathSuffix.split('/')
-        branch = parseInt(branch)
-        index = parseInt(index)
-        const displayAddress = toNewFormat(
-          addressObj.displayAddress,
-          this.network
-        )
+    for (const scriptHash in addressInfos) {
+      const addressObj: AddressInfo = addressInfos[scriptHash]
+      const path = parsePath(addressObj.path, this.masterPath)
+      if (path.length) {
+        const [branch, index] = path
+        const displayAddress = toNewFormat(addressObj.displayAddress, network)
         const address = { displayAddress, scriptHash, index, branch }
         if (branch === 0) {
           this.keys.receive.children.push(address)
@@ -210,6 +163,7 @@ export class KeyManager {
           this.keys.change.children.push(address)
         }
       }
+      // }
     }
     // Cache is not sorted so sort addresses according to derivation index
     this.keys.receive.children.sort((a, b) => a.index - b.index)
@@ -222,15 +176,8 @@ export class KeyManager {
   async load () {
     // If we don't have any master key we will now create it from seed
     if (!this.keys.master.privKey && !this.keys.master.pubKey) {
-      const privateKey = await this.getPrivateFromSeed(this.seed)
-
-      const result = privateKey.derivePath(this.masterPath)
-      if (typeof result.then === 'function') {
-        this.keys.master.privKey = await Promise.resolve(result)
-      } else {
-        this.keys.master.privKey = result
-      }
-
+      const privateKey = await getPrivateFromSeed(this.seed, this.network)
+      this.keys.master.privKey = await privateKey.derivePath(this.masterPath)
       this.keys.master.pubKey = this.keys.master.privKey.toPublic()
       this.saveKeysToCache()
     } else if (!this.keys.master.pubKey) {
@@ -328,7 +275,7 @@ export class KeyManager {
       height: height,
       rate: rate,
       maxFee: maxFee,
-      estimate: prev => this.estimateSize(prev)
+      estimate: prev => estimateSize(prev, this.bip)
     })
 
     // If TX is RBF mark is by changing the Inputs sequences
@@ -352,50 +299,29 @@ export class KeyManager {
   }
 
   async sign (mtx: any, privateKeys: Array<string> = []) {
-    if (!this.keys.master.privKey && this.seed === '') {
-      throw new Error("Can't sign without private key")
-    }
-    if (!this.keys.master.privKey) {
-      this.keys.master.privKey = await this.getPrivateFromSeed(this.seed)
-      this.saveKeysToCache()
-    }
     const keys = []
     for (const key of privateKeys) {
       const privKey = bcoin.primitives.KeyRing.fromSecret(key, this.network)
       keys.push(privKey)
     }
     if (!keys.length) {
+      if (!this.keys.master.privKey && this.seed === '') {
+        throw new Error("Can't sign without private key")
+      }
+      if (!this.keys.master.privKey) {
+        this.keys.master.privKey = await getPrivateFromSeed(this.seed, this.network)
+        this.saveKeysToCache()
+      }
       for (const input: any of mtx.inputs) {
         const { prevout } = input
         if (prevout) {
           const [branch: number, index: number] = this.utxoToPath(prevout)
           const keyRing = branch === 0 ? this.keys.receive : this.keys.change
-          let { privKey } = keyRing
-          if (!privKey) {
-            const result = this.keys.master.privKey.derive(branch)
-            if (typeof result.then === 'function') {
-              keyRing.privKey = await Promise.resolve(result)
-            } else {
-              keyRing.privKey = result
-            }
-            privKey = keyRing.privKey
+          if (!keyRing.privKey) {
+            keyRing.privKey = await this.keys.master.privKey.derive(branch)
             this.saveKeysToCache()
           }
-          const result = privKey.derive(index)
-          let privateKey
-          if (typeof result.then === 'function') {
-            privateKey = await Promise.resolve(result)
-          } else {
-            privateKey = result
-          }
-          const nested = this.bip === 'bip49'
-          const witness = this.bip === 'bip49'
-          const key = bcoin.primitives.KeyRing.fromOptions({
-            privateKey,
-            nested,
-            witness
-          })
-          key.network = bcoin.network.get(this.network)
+          const key = await deriveKeyRing(keyRing.privKey, index, this.bip, this.network)
           keys.push(key)
         }
       }
@@ -461,23 +387,6 @@ export class KeyManager {
       : addresses[addresses.length - 1].displayAddress
   }
 
-  async getPrivateFromSeed (seed: string) {
-    let privateKey
-    try {
-      const mnemonic = bcoin.hd.Mnemonic.fromPhrase(seed)
-      const result = bcoin.hd.PrivateKey.fromMnemonic(mnemonic, this.network)
-      if (typeof result.then === 'function') {
-        privateKey = await Promise.resolve(result)
-      } else {
-        privateKey = result
-      }
-    } catch (e) {
-      const keyBuffer = Buffer.from(seed, 'base64')
-      privateKey = bcoin.hd.PrivateKey.fromSeed(keyBuffer, this.network)
-    }
-    return privateKey
-  }
-
   saveKeysToCache () {
     try {
       const keys = {}
@@ -512,6 +421,11 @@ export class KeyManager {
 
   async deriveNewKeys (keyRing: KeyRing, branch: number, closeGaps: boolean) {
     const { children } = keyRing
+    // If we never derived a public key for this branch before
+    if (!keyRing.pubKey) {
+      keyRing.pubKey = await this.keys.master.pubKey.derive(branch)
+      this.saveKeysToCache()
+    }
 
     // If the chain might have gaps, fill those in:
     if (closeGaps) {
@@ -519,7 +433,7 @@ export class KeyManager {
       const length = children.length
       for (let i = 0; i < length; ++i, ++index) {
         while (index < children[i].index) {
-          await this.deriveAddress(keyRing, branch, index++)
+          await this.updateKeyRing(keyRing, branch, index++)
         }
       }
       if (children.length > length) {
@@ -540,99 +454,25 @@ export class KeyManager {
 
     // If the last used address is too close to the end, generate some more:
     while (lastUsed + this.gapLimit > children.length) {
-      await this.deriveAddress(keyRing, branch, children.length)
+      await this.updateKeyRing(keyRing, branch, children.length)
     }
   }
 
   /**
-   * Derives an address at the specified branch and index,
+   * Derives an address at the specified branch and index from the keyRing,
    * and adds it to the state.
    * @param keyRing The KeyRing corresponding to the selected branch.
    */
-  async deriveAddress (keyRing: KeyRing, branch: number, index: number) {
-    if (!keyRing.pubKey) {
-      const result = this.keys.master.pubKey.derive(branch)
-      if (typeof result.then === 'function') {
-        keyRing.pubKey = await Promise.resolve(result)
-      } else {
-        keyRing.pubKey = result
-      }
-      this.saveKeysToCache()
-    }
-    let publicKey
-
-    const result = keyRing.pubKey.derive(index)
-    if (typeof result.then === 'function') {
-      publicKey = await Promise.resolve(result)
-    } else {
-      publicKey = result
-    }
-
-    let nested = false
-    let witness = false
-    if (this.bip === 'bip49') {
-      nested = true
-      witness = true
-    }
-    const key = bcoin.primitives.KeyRing.fromOptions({
-      publicKey,
-      nested,
-      witness
-    })
-    key.network = bcoin.network.get(this.network)
-    let displayAddress = key.getAddress('base58')
-    const scriptHash = await this.addressToScriptHash(displayAddress)
-    displayAddress = toNewFormat(displayAddress, this.network)
-    this.onNewAddress(
-      scriptHash,
-      displayAddress,
-      `${this.masterPath}/${branch}/${index}`
-    )
-    const address = {
-      displayAddress,
-      scriptHash,
+  async updateKeyRing (keyRing: KeyRing, branch: number, index: number) {
+    const { address, scriptHash } = await deriveAddress(
+      keyRing.pubKey,
       index,
-      branch
-    }
-    keyRing.children.push(address)
-    return publicKey
-  }
-
-  async addressToScriptHash (address: string): Promise<string> {
-    const scriptRaw = bcoin.script.fromAddress(address).toRaw()
-    const scriptHashRaw = await hash256(scriptRaw)
-    const scriptHash = reverseBufferToHex(scriptHashRaw)
-    return scriptHash
-  }
-
-  estimateSize (prev: any) {
-    const scale = bcoin.consensus.WITNESS_SCALE_FACTOR
-    const address = prev.getAddress()
-    if (!address) return -1
-
-    let size = 0
-
-    if (prev.isScripthash()) {
-      if (this.bip === 'bip49') {
-        size += 23 // redeem script
-        size *= 4 // vsize
-        // Varint witness items length.
-        size += 1
-        // Calculate vsize
-        size = ((size + scale - 1) / scale) | 0
-      }
-    }
-
-    // P2PKH
-    if (this.bip !== 'bip49') {
-      // varint script size
-      size += 1
-      // OP_PUSHDATA0 [signature]
-      size += 1 + 73
-      // OP_PUSHDATA0 [key]
-      size += 1 + 33
-    }
-
-    return size || -1
+      this.bip,
+      this.network
+    )
+    const displayAddress = toNewFormat(address, this.network)
+    const keyPath = `${this.masterPath}/${branch}/${index}`
+    keyRing.children.push({ displayAddress, scriptHash, index, branch })
+    this.onNewAddress(scriptHash, displayAddress, keyPath)
   }
 }
