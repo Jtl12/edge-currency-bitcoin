@@ -31,7 +31,7 @@ import {
   addressToScriptHash,
   keysFromWalletInfo,
   getAllAddresses,
-  verifyTx
+  verifyTxAmount
 } from '../utils/coinUtils.js'
 import {
   toLegacyFormat,
@@ -518,7 +518,8 @@ export class CurrencyEngine {
 
     await engineState.load()
     const addresses = await getAllAddresses(privateKeys, this.network)
-    addresses.forEach(address => engineState.addAddress(...address))
+    console.log('addresses', addresses)
+    addresses.forEach(({address, scriptHash}) => engineState.addAddress(scriptHash, address))
     engineState.connect()
 
     return end
@@ -635,7 +636,8 @@ export class CurrencyEngine {
     edgeTransaction: EdgeTransaction
   ): Promise<EdgeTransaction> {
     const { otherParams = {}, signedTx, currencyCode } = edgeTransaction
-    const tx = verifyTx(signedTx, otherParams.bcoinTx)
+    const tx = verifyTxAmount(signedTx, otherParams.bcoinTx)
+    if (!tx) throw new Error('Wrong spend amount')
     edgeTransaction.otherParams.bcoinTx = tx
     this.logEdgeTransaction(edgeTransaction, 'Broadcasting')
 

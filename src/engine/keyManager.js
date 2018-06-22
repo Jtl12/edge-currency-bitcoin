@@ -137,7 +137,9 @@ export class KeyManager {
     // Create a lock for when deriving addresses
     this.writeLock = new bcoin.utils.Lock()
     // Create the master derivation path
-    this.masterPath = createMasterPath(account, coinType, bip, network)
+    const masterPath = createMasterPath(account, coinType, bip, network)
+    if (!masterPath) throw new Error('Unknown bip type')
+    this.masterPath = masterPath
     // Set the callbacks with nops as default
     const { onNewAddress = nop, onNewKey = nop } = callbacks
     this.onNewAddress = onNewAddress
@@ -147,8 +149,7 @@ export class KeyManager {
     this.txInfos = txInfos
     // Create KeyRings while tring to load as many of the pubKey/privKey from the cache
     // $FlowFixMe
-    this.keys = keysFromRaw(rawKeys, network)
-    console.log('this.keys', this.keys)
+    this.keys = keysFromRaw(rawKeys, bip, network)
     // Load addresses from Cache
     for (const scriptHash in addressInfos) {
       const addressObj: AddressInfo = addressInfos[scriptHash]
