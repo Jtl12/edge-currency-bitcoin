@@ -2,13 +2,13 @@
 import bcoin from 'bcoin'
 import parse from 'url-parse'
 import type { EdgePaymentProtocolInfo } from 'edge-core-js'
-import { toNewFormat } from './addressFormat/addressFormatIndex.js'
+import { toNewFormat } from '../utils/addressFormat/addressFormatIndex.js'
 
-export const parsePayment = (
+export function parsePayment (
   paymentBuffer: Buffer,
   network: string,
   currencyCode: string
-): EdgePaymentProtocolInfo => {
+): EdgePaymentProtocolInfo {
   const bip70 = bcoin.bip70.PaymentRequest.fromRaw(paymentBuffer)
   const {
     paymentUrl = '',

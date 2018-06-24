@@ -16,7 +16,7 @@ import bcoin from 'bcoin'
 import buffer from 'buffer-hack'
 import { CurrencyEngine } from '../engine/currencyEngine.js'
 import { PluginState } from './pluginState.js'
-import { parseUri, encodeUri } from '../utils/uri.js'
+import { parseUri, encodeUri } from './uri.js'
 import { getPrivateFromSeed } from '../utils/coinUtils.js'
 
 // $FlowFixMe

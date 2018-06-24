@@ -9,7 +9,7 @@ import {
   sanitizeAddress,
   dirtyAddress,
   toNewFormat
-} from './addressFormat/addressFormatIndex.js'
+} from '../utils/addressFormat/addressFormatIndex.js'
 import { serialize } from 'uri-js'
 import parse from 'url-parse'
 import { bns } from 'biggystring'

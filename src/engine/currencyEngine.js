@@ -21,10 +21,10 @@ import type { EngineStateCallbacks } from './engineState.js'
 import type { KeyManagerCallbacks } from './keyManager'
 import type { EarnComFees, BitcoinFees } from '../utils/flowTypes.js'
 import { validateObject, promiseAny } from '../utils/utils.js'
-import { parsePayment } from '../utils/paymentRequest.js'
+import { parsePayment } from './paymentRequest.js'
 import { InfoServerFeesSchema } from '../utils/jsonSchemas.js'
-import { calcFeesFromEarnCom, calcMinerFeePerByte } from '../utils/miningFees.js'
-import { broadcastFactories } from '../utils/broadcastApi.js'
+import { calcFeesFromEarnCom, calcMinerFeePerByte } from './miningFees.js'
+import { broadcastFactories } from './broadcastApi.js'
 import { bns } from 'biggystring'
 import {
   addressToScriptHash,
