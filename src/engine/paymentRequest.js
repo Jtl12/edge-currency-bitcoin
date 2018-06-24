@@ -16,7 +16,7 @@ export function parsePayment (
     merchantData,
     outputs = []
   } = bip70.paymentDetails
-  const domain = parse(paymentUrl, true).hostname
+  const domain = parse(paymentUrl, {}).hostname
   const spendTargets = []
   let nativeAmount = 0
 
