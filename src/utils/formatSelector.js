@@ -51,8 +51,9 @@ export const FormatSelector = (
     branches: branches.slice(1),
     setKeyType: setKeyTypeWrap,
 
-    addressFromSecret: (key: any) =>
-      addressFromKey(primitives.KeyRing.fromSecret(key, network)),
+    addressFromSecret: (key: any) => Promise
+      .resolve(primitives.KeyRing.fromSecret(key, network))
+      .then(keyObj => addressFromKey(keyObj)),
 
     parseSeed:
       bip === 32

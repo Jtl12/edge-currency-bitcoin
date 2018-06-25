@@ -1,7 +1,7 @@
 // @flow
 import type { EdgeCurrencyInfo } from 'edge-core-js'
 import { patchTransaction } from './replayProtaction.js'
-import { secp256k1Patch, pbkdf2Patch } from './patchHDKeys.js'
+import { secp256k1Patch, pbkdf2Patch } from './asyncCrypto.js'
 
 let cryptoPatched = false
 let replayProtactionPatched = false

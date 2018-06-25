@@ -10,6 +10,25 @@ const SEED_SALT = Buffer.from('Bitcoin seed', 'ascii')
 export const secp256k1Patch = function (bcoin, secp256k1) {
   const publicKey = bcoin.hd.PublicKey.prototype
   const privateKey = bcoin.hd.PrivateKey.prototype
+  const keyRing = bcoin.primitives.KeyRing.prototype
+
+  // Patch From Private to use async version of secp256k1
+  keyRing.fromPrivate = async function (key, compress, network) {
+    assert(Buffer.isBuffer(key), 'Private key must be a buffer.')
+    const validKey = await secp256k1.privateKeyVerify(key)
+    assert(validKey, 'Not a valid private key.')
+
+    if (typeof compress !== 'boolean') {
+      network = compress
+      compress = null
+    }
+
+    this.network = bcoin.network.get(network)
+    this.privateKey = key
+    this.publicKey = await secp256k1.publicKeyCreate(key, compress !== false)
+
+    return this
+  }
 
   // Patch Derive to use async version of secp256k1
   privateKey.derive = async function (index, hardened) {
