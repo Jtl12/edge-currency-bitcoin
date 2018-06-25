@@ -49,9 +49,6 @@ function makePluginFactory (
         pbkdf2 = options.io.pbkdf2
       }
 
-      secp256k1 = async (...args) => bcoin.crypto.secp256k1(...args)
-      pbkdf2 = async (...args) => bcoin.crypto.pbkdf2(...args)
-
       bcoinExtender(bcoin, currencyInfo, secp256k1, pbkdf2)
       return plugin.state.load().then(() => plugin)
     }

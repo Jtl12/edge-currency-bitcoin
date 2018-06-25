@@ -369,7 +369,7 @@ export class KeyManager {
       const pubKey = privKey.toPublic()
       this.keys.master = { ...this.keys.master, privKey, pubKey }
     }
-    return this.saveKeysToCache()
+    this.saveKeysToCache()
   }
 
   saveKeysToCache () {

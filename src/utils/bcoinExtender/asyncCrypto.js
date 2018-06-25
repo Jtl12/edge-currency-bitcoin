@@ -17,16 +17,13 @@ export const secp256k1Patch = function (bcoin, secp256k1) {
     assert(Buffer.isBuffer(key), 'Private key must be a buffer.')
     const validKey = await secp256k1.privateKeyVerify(key)
     assert(validKey, 'Not a valid private key.')
-
     if (typeof compress !== 'boolean') {
       network = compress
       compress = null
     }
-
     this.network = bcoin.network.get(network)
     this.privateKey = key
     this.publicKey = await secp256k1.publicKeyCreate(key, compress !== false)
-
     return this
   }
 
@@ -112,10 +109,6 @@ export const secp256k1Patch = function (bcoin, secp256k1) {
   // Patch From Seed to use async version of secp256k1
   privateKey.fromSeed = async function (seed, network) {
     assert(Buffer.isBuffer(seed))
-    // console.warn(seed.length, network)
-    // console.warn(seed.length * 8, network)
-    // console.warn(bcoin.hd.common.MIN_ENTROPY)
-    // console.warn(bcoin.hd.common.MAX_ENTROPY)
 
     if (
       (seed.length * 8 < bcoin.hd.common.MIN_ENTROPY) ||

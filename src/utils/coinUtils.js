@@ -1,7 +1,7 @@
 // @flow
 // $FlowFixMe
 import buffer from 'buffer-hack'
-import { hd, primitives, script, network as Network } from 'bcoin'
+import { utils, hd, primitives, script, network as Network } from 'bcoin'
 import { hash256, hash256Sync, reverseBufferToHex } from './utils.js'
 
 // $FlowFixMe
@@ -26,6 +26,19 @@ export const keysFromWalletInfo = (
       ? keys.format
       : typeof type === 'string' ? type.split('-')[1] : ''
 })
+
+export const verifyWIF = (data: any, network: string) => {
+  const base58 = utils.base58
+  const br = new utils.BufferReader(base58.decode(data), true)
+  const version = br.readU8()
+  network = Network.fromWIF(version, network)
+  br.readBytes(32)
+  if (br.left() > 4 && br.readU8() !== 1) {
+    throw new Error('Bad compression flag.')
+  }
+  br.verifyChecksum()
+  return true
+}
 
 export const setKeyType = (
   key: any,
