@@ -1,5 +1,9 @@
 import assert from 'assert'
 import { nfkd } from 'unorm'
+// $FlowFixMe
+import buffer from 'buffer-hack'
+// $FlowFixMe
+const { Buffer } = buffer
 
 export const patchDerivePublic = function (bcoin, secp256k1) {
   const publicKey = bcoin.hd.PublicKey.prototype

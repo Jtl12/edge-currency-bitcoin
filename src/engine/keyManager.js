@@ -2,11 +2,8 @@
 import type { EdgeSpendTarget } from 'edge-core-js'
 import type { UtxoInfo, AddressInfo, AddressInfos } from './engineState.js'
 import bcoin from 'bcoin'
-import { DerivationSelector } from './derivationSelector.js'
-import {
-  parsePath,
-  getPrivateFromSeed
-} from '../utils/coinUtils.js'
+import { FormatSelector } from '../utils/formatSelector.js'
+import { parsePath, getPrivateFromSeed } from '../utils/coinUtils.js'
 import {
   toLegacyFormat,
   toNewFormat
@@ -98,7 +95,7 @@ export class KeyManager {
   seed: string
   gapLimit: number
   network: string
-  dSelector: any
+  fSelector: any
   onNewAddress: (scriptHash: string, address: string, path: string) => void
   onNewKey: (keys: any) => void
   addressInfos: AddressInfos
@@ -127,11 +124,11 @@ export class KeyManager {
     this.gapLimit = gapLimit
     this.network = network
     this.bip = bip
-    this.dSelector = DerivationSelector(bip, network)
+    this.fSelector = FormatSelector(bip, network)
     // Create a lock for when deriving addresses
     this.writeLock = new bcoin.utils.Lock()
     // Create the master derivation path
-    this.masterPath = this.dSelector.createMasterPath(account, coinType)
+    this.masterPath = this.fSelector.createMasterPath(account, coinType)
     // Set the callbacks with nops as default
     const { onNewAddress = nop, onNewKey = nop } = callbacks
     this.onNewAddress = onNewAddress
@@ -140,8 +137,7 @@ export class KeyManager {
     this.addressInfos = addressInfos
     this.txInfos = txInfos
     // Create KeyRings while tring to load as many of the pubKey/privKey from the cache
-    // $FlowFixMe
-    this.keys = this.dSelector.keysFromRaw(rawKeys)
+    this.keys = this.fSelector.keysFromRaw(rawKeys)
     // Load addresses from Cache
     for (const scriptHash in addressInfos) {
       const addressObj: AddressInfo = addressInfos[scriptHash]
@@ -156,7 +152,6 @@ export class KeyManager {
           this.keys.change.children.push(address)
         }
       }
-      // }
     }
     // Cache is not sorted so sort addresses according to derivation index
     this.keys.receive.children.sort((a, b) => a.index - b.index)
@@ -167,16 +162,8 @@ export class KeyManager {
   // /////////////// Public API /////////////////// //
   // ////////////////////////////////////////////// //
   async load () {
-    // If we don't have any master key we will now create it from seed
-    if (!this.keys.master.privKey && !this.keys.master.pubKey) {
-      const privateKey = await getPrivateFromSeed(this.seed, this.network)
-      this.keys.master.privKey = await privateKey.derivePath(this.masterPath)
-      this.keys.master.pubKey = this.keys.master.privKey.toPublic()
-      this.saveKeysToCache()
-    } else if (!this.keys.master.pubKey) {
-      this.keys.master.pubKey = this.keys.master.privKey.toPublic()
-      this.saveKeysToCache()
-    }
+    // If we don't have a public master key we will now create it from seed
+    if (!this.keys.master.pubKey) await this.initMasterKeys()
     await this.setLookAhead(true)
   }
 
@@ -268,7 +255,7 @@ export class KeyManager {
       height: height,
       rate: rate,
       maxFee: maxFee,
-      estimate: prev => this.dSelector.estimateSize(prev)
+      estimate: prev => this.fSelector.estimateSize(prev)
     })
 
     // If TX is RBF mark is by changing the Inputs sequences
@@ -301,10 +288,7 @@ export class KeyManager {
       if (!this.keys.master.privKey && this.seed === '') {
         throw new Error("Can't sign without private key")
       }
-      if (!this.keys.master.privKey) {
-        this.keys.master.privKey = await getPrivateFromSeed(this.seed, this.network)
-        this.saveKeysToCache()
-      }
+      await this.initMasterKeys()
       for (const input: any of mtx.inputs) {
         const { prevout } = input
         if (prevout) {
@@ -314,26 +298,23 @@ export class KeyManager {
             keyRing.privKey = await this.keys.master.privKey.derive(branch)
             this.saveKeysToCache()
           }
-          const key = await this.dSelector.deriveKeyRing(keyRing.privKey, index)
+          const key = await this.fSelector.deriveKeyRing(keyRing.privKey, index)
           keyRings.push(key)
         }
       }
     }
     await mtx.template(keyRings)
-    console.warn(1, 'keyManager.js - sign - mtx')
     if (this.network.includes('bitcoincash')) {
       mtx.sign(keyRings, -100)
-      console.warn(2, 'keyManager.js - sign if - mtx')
     } else {
       mtx.sign(keyRings)
-      console.warn(2, 'keyManager.js - sign else - mtx')
     }
   }
 
   getSeed (): string | null {
     if (this.seed && this.seed !== '') {
       try {
-        return this.dSelector.parseSeed(this.seed)
+        return this.fSelector.parseSeed(this.seed)
       } catch (e) {
         console.log(e)
         return null
@@ -383,6 +364,18 @@ export class KeyManager {
       : addresses[addresses.length - 1].displayAddress
   }
 
+  async initMasterKeys () {
+    if (this.keys.master.privKey) {
+      this.keys.master.pubKey = this.keys.master.privKey.toPublic()
+    } else {
+      const privateKey = await getPrivateFromSeed(this.seed, this.network)
+      const privKey = await privateKey.derivePath(this.masterPath)
+      const pubKey = privKey.toPublic()
+      this.keys.master = { ...this.keys.master, privKey, pubKey }
+    }
+    return this.saveKeysToCache()
+  }
+
   saveKeysToCache () {
     try {
       const keys = {}
@@ -404,10 +397,10 @@ export class KeyManager {
   async setLookAhead (closeGaps: boolean = false) {
     const unlock = await this.writeLock.lock()
     try {
-      if (this.bip !== 'bip32') {
-        await this.deriveNewKeys(this.keys.change, 1, closeGaps)
+      const { branches } = this.fSelector
+      for (let i = 0; i < branches.length; i++) {
+        await this.deriveNewKeys(this.keys[branches[i]], i, closeGaps)
       }
-      await this.deriveNewKeys(this.keys.receive, 0, closeGaps)
     } catch (e) {
       console.log(e)
     } finally {
@@ -460,7 +453,7 @@ export class KeyManager {
    * @param keyRing The KeyRing corresponding to the selected branch.
    */
   async updateKeyRing (keyRing: KeyRing, branch: number, index: number) {
-    const { address, scriptHash } = await this.dSelector.deriveAddress(
+    const { address, scriptHash } = await this.fSelector.deriveAddress(
       keyRing.pubKey,
       index
     )

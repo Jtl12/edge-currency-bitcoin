@@ -8,9 +8,20 @@ import { addressToScriptHash, setKeyType } from '../utils/coinUtils.js'
 const { Buffer } = buffer
 const witScale = consensus.WITNESS_SCALE_FACTOR
 
+export const getAllAddresses = (privateKeys: Array<string>, network: string) => {
+  const addressesPromises = []
+  for (const bip of SUPPORTED_BIPS) {
+    for (const key of privateKeys) {
+      const dSelector = FormatSelector(bip, network)
+      addressesPromises.push(dSelector.addressFromSecret(key))
+    }
+  }
+  return Promise.all(addressesPromises)
+}
+
 export const SUPPORTED_BIPS = ['bip32', 'bip44', 'bip49', 'bip84']
 
-export const DerivationSelector = (bipStr: string = 'bip32', network: string = 'main') => {
+export const FormatSelector = (bipStr: string = 'bip32', network: string = 'main') => {
   if (!SUPPORTED_BIPS.includes(bipStr)) throw new Error('Unknown bip type')
   const bip = parseInt(bipStr.split('bip')[1])
 
@@ -28,7 +39,7 @@ export const DerivationSelector = (bipStr: string = 'bip32', network: string = '
 
   return {
     addressFromKey,
-
+    branches: branches.slice(1),
     setKeyType: setKeyTypeWrap,
 
     addressFromSecret: (key: any) => addressFromKey(

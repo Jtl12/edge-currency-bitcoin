@@ -1,4 +1,8 @@
 import assert from 'assert'
+// $FlowFixMe
+import buffer from 'buffer-hack'
+// $FlowFixMe
+const { Buffer } = buffer
 
 export const patchTransaction = function (bcoin) {
   const txProto = bcoin.primitives.TX.prototype
@@ -13,9 +17,6 @@ export const patchTransaction = function (bcoin) {
   //   type = null
   // } 
   txProto.signature = function (index, prev, value, key, hashType, version) {
-    console.warn(1, 'txProto.signature - defaultHashType', defaultHashType)
-    console.warn(2, 'txProto.signature - hashType', hashType)
-    console.warn(3, 'txProto.signature - version', version)
     const {
       SIGHASH_FORKID = 0x00,
       forcedMinVersion = 0,
@@ -36,9 +37,6 @@ export const patchTransaction = function (bcoin) {
     if (forcedMinVersion) version = forcedMinVersion
     if (version == null) version = 0
 
-    console.warn(4, 'txProto.signature - forkedHashType', forkedHashType)
-    console.warn(5, 'txProto.signature - forkedType', forkedType)
-    console.warn(6, 'txProto.signature - version', version)
     const hash = this.signatureHash(index, prev, value, forkedType, version, forkedHashType)
     const sig = bcoin.crypto.secp256k1.sign(hash, key)
     const bw = new bcoin.utils.StaticWriter(sig.length + 1)
