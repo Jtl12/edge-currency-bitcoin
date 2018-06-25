@@ -22,10 +22,10 @@ for (const fixture of fixtures) {
     })
   }
 
-  describe(`Info for Wallet type ${WALLET_TYPE}`, function () {
+  describe(`Address format for Wallet type ${WALLET_TYPE}`, function () {
     let plugin
 
-    before('Plugin', function (done) {
+    before('Create Plugin', function (done) {
       CurrencyPluginFactory.makePlugin(opts).then(currencyPlugin => {
         plugin = currencyPlugin
         done()

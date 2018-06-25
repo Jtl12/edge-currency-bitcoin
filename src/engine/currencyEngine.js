@@ -26,10 +26,10 @@ import { InfoServerFeesSchema } from '../utils/jsonSchemas.js'
 import { calcFeesFromEarnCom, calcMinerFeePerByte } from './miningFees.js'
 import { broadcastFactories } from './broadcastApi.js'
 import { bns } from 'biggystring'
+import { SUPPORTED_BIPS, DerivationSelector } from './derivationSelector.js'
 import {
   addressToScriptHash,
   keysFromWalletInfo,
-  getAllAddresses,
   verifyTxAmount
 } from '../utils/coinUtils.js'
 import {
@@ -516,8 +516,16 @@ export class CurrencyEngine {
     })
 
     await engineState.load()
-    const addresses = await getAllAddresses(privateKeys, this.network)
-    console.log('addresses', addresses)
+
+    const addressesPromises = []
+    for (const bip of SUPPORTED_BIPS) {
+      for (const key of privateKeys) {
+        const dSelector = DerivationSelector(bip, this.network)
+        addressesPromises.push(dSelector.addressFromSecret(key))
+      }
+    }
+    const addresses = await Promise.all(addressesPromises)
+    console.warn('addresses', addresses)
     addresses.forEach(({address, scriptHash}) => engineState.addAddress(scriptHash, address))
     engineState.connect()
 

@@ -1,25 +1,17 @@
 // @flow
 import type { EdgeSpendTarget } from 'edge-core-js'
 import type { UtxoInfo, AddressInfo, AddressInfos } from './engineState.js'
-// $FlowFixMe
-import buffer from 'buffer-hack'
 import bcoin from 'bcoin'
+import { DerivationSelector } from './derivationSelector.js'
 import {
-  createMasterPath,
-  keysFromRaw,
   parsePath,
-  getPrivateFromSeed,
-  estimateSize,
-  deriveKeyRing,
-  deriveAddress
+  getPrivateFromSeed
 } from '../utils/coinUtils.js'
 import {
   toLegacyFormat,
   toNewFormat
 } from '../utils/addressFormat/addressFormatIndex.js'
 
-// $FlowFixMe
-const { Buffer } = buffer
 const GAP_LIMIT = 10
 const RBF_SEQUENCE_NUM = 0xffffffff - 2
 const nop = () => {}
@@ -106,6 +98,7 @@ export class KeyManager {
   seed: string
   gapLimit: number
   network: string
+  dSelector: any
   onNewAddress: (scriptHash: string, address: string, path: string) => void
   onNewKey: (keys: any) => void
   addressInfos: AddressInfos
@@ -134,12 +127,11 @@ export class KeyManager {
     this.gapLimit = gapLimit
     this.network = network
     this.bip = bip
+    this.dSelector = DerivationSelector(bip, network)
     // Create a lock for when deriving addresses
     this.writeLock = new bcoin.utils.Lock()
     // Create the master derivation path
-    const masterPath = createMasterPath(account, coinType, bip, network)
-    if (!masterPath) throw new Error('Unknown bip type')
-    this.masterPath = masterPath
+    this.masterPath = this.dSelector.createMasterPath(account, coinType)
     // Set the callbacks with nops as default
     const { onNewAddress = nop, onNewKey = nop } = callbacks
     this.onNewAddress = onNewAddress
@@ -149,7 +141,7 @@ export class KeyManager {
     this.txInfos = txInfos
     // Create KeyRings while tring to load as many of the pubKey/privKey from the cache
     // $FlowFixMe
-    this.keys = keysFromRaw(rawKeys, bip, network)
+    this.keys = this.dSelector.keysFromRaw(rawKeys)
     // Load addresses from Cache
     for (const scriptHash in addressInfos) {
       const addressObj: AddressInfo = addressInfos[scriptHash]
@@ -276,7 +268,7 @@ export class KeyManager {
       height: height,
       rate: rate,
       maxFee: maxFee,
-      estimate: prev => estimateSize(prev, this.bip)
+      estimate: prev => this.dSelector.estimateSize(prev)
     })
 
     // If TX is RBF mark is by changing the Inputs sequences
@@ -300,12 +292,12 @@ export class KeyManager {
   }
 
   async sign (mtx: any, privateKeys: Array<string> = []) {
-    const keys = []
+    const keyRings = []
     for (const key of privateKeys) {
       const privKey = bcoin.primitives.KeyRing.fromSecret(key, this.network)
-      keys.push(privKey)
+      keyRings.push(privKey)
     }
-    if (!keys.length) {
+    if (!keyRings.length) {
       if (!this.keys.master.privKey && this.seed === '') {
         throw new Error("Can't sign without private key")
       }
@@ -322,23 +314,26 @@ export class KeyManager {
             keyRing.privKey = await this.keys.master.privKey.derive(branch)
             this.saveKeysToCache()
           }
-          const key = await deriveKeyRing(keyRing.privKey, index, this.bip, this.network)
-          keys.push(key)
+          const key = await this.dSelector.deriveKeyRing(keyRing.privKey, index)
+          keyRings.push(key)
         }
       }
     }
-    await mtx.template(keys)
+    await mtx.template(keyRings)
+    console.warn(1, 'keyManager.js - sign - mtx')
     if (this.network.includes('bitcoincash')) {
-      mtx.sign(keys, -100)
-    } else mtx.sign(keys)
+      mtx.sign(keyRings, -100)
+      console.warn(2, 'keyManager.js - sign if - mtx')
+    } else {
+      mtx.sign(keyRings)
+      console.warn(2, 'keyManager.js - sign else - mtx')
+    }
   }
 
   getSeed (): string | null {
     if (this.seed && this.seed !== '') {
-      if (this.bip !== 'bip32') return this.seed
       try {
-        const keyBuffer = Buffer.from(this.seed, 'base64')
-        return keyBuffer.toString('hex')
+        return this.dSelector.parseSeed(this.seed)
       } catch (e) {
         console.log(e)
         return null
@@ -465,11 +460,9 @@ export class KeyManager {
    * @param keyRing The KeyRing corresponding to the selected branch.
    */
   async updateKeyRing (keyRing: KeyRing, branch: number, index: number) {
-    const { address, scriptHash } = await deriveAddress(
+    const { address, scriptHash } = await this.dSelector.deriveAddress(
       keyRing.pubKey,
-      index,
-      this.bip,
-      this.network
+      index
     )
     const displayAddress = toNewFormat(address, this.network)
     const keyPath = `${this.masterPath}/${branch}/${index}`
