@@ -18,10 +18,7 @@ import { CurrencyEngine } from '../engine/currencyEngine.js'
 import { PluginState } from './pluginState.js'
 import { parseUri, encodeUri } from './uri.js'
 import { FormatSelector } from '../utils/formatSelector.js'
-import {
-  getPrivateFromSeed,
-  keysFromWalletInfo
-} from '../utils/coinUtils.js'
+import { getPrivateFromSeed, keysFromWalletInfo } from '../utils/coinUtils.js'
 
 // $FlowFixMe
 const { Buffer } = buffer
@@ -72,13 +69,11 @@ export class CurrencyPlugin {
       throw new Error('InvalidWalletType')
     }
     if (!walletInfo.keys) throw new Error('InvalidKeyName')
-    const { seed, bip, coinType } = keysFromWalletInfo(
-      this.network,
-      walletInfo
-    )
+    const { seed, bip, coinType } = keysFromWalletInfo(this.network, walletInfo)
     if (!seed) throw new Error('InvalidKeyName')
     const masterKey = await getPrivateFromSeed(seed, this.network)
-    const masterPath = FormatSelector(bip, this.network).createMasterPath(0, coinType)
+    const fSelector = FormatSelector(bip, this.network)
+    const masterPath = fSelector.createMasterPath(0, coinType)
     const privateKey = await masterKey.derivePath(masterPath)
     return {
       [`${this.network}Key`]: walletInfo.keys[`${this.network}Key`],

@@ -517,7 +517,9 @@ export class CurrencyEngine {
 
     await engineState.load()
     const addresses = await getAllAddresses(privateKeys, this.network)
-    addresses.forEach(({address, scriptHash}) => engineState.addAddress(scriptHash, address))
+    addresses.forEach(({ address, scriptHash }) =>
+      engineState.addAddress(scriptHash, address)
+    )
     engineState.connect()
 
     return end

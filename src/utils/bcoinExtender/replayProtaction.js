@@ -15,29 +15,38 @@ export const patchTransaction = function (bcoin) {
   //   forcedMinVersion = 0,
   //   forkId = 0x00,
   //   type = null
-  // } 
+  // }
   txProto.signature = function (index, prev, value, key, hashType, version) {
     const {
       SIGHASH_FORKID = 0x00,
       forcedMinVersion = 0,
       forkId = 0x00,
       type = typeof hashType === 'number' ? hashType : null
-    } = typeof hashType === 'object' ? hashType : {}
+    } =
+      typeof hashType === 'object' ? hashType : {}
 
-    const forkedHashType = Object.keys(defaultHashType)
-      .reduce((result, type) => ({
+    const forkedHashType = Object.keys(defaultHashType).reduce(
+      (result, type) => ({
         ...result,
         [type]: defaultHashType[type] | SIGHASH_FORKID | forkId
-      }), {})
+      }),
+      {}
+    )
 
-    const forkedType = type != null
-      ? type | SIGHASH_FORKID | forkId
-      : forkedHashType.ALL
+    const forkedType =
+      type != null ? type | SIGHASH_FORKID | forkId : forkedHashType.ALL
 
     if (forcedMinVersion) version = forcedMinVersion
     if (version == null) version = 0
 
-    const hash = this.signatureHash(index, prev, value, forkedType, version, forkedHashType)
+    const hash = this.signatureHash(
+      index,
+      prev,
+      value,
+      forkedType,
+      version,
+      forkedHashType
+    )
     const sig = bcoin.crypto.secp256k1.sign(hash, key)
     const bw = new bcoin.utils.StaticWriter(sig.length + 1)
 
@@ -49,7 +58,14 @@ export const patchTransaction = function (bcoin) {
 
   // Patch signatureHash
   // Allows for the passing of `hashType`
-  txProto.signatureHash = function (index, prev, value, type, version, hashType = defaultHashType) {
+  txProto.signatureHash = function (
+    index,
+    prev,
+    value,
+    type,
+    version,
+    hashType = defaultHashType
+  ) {
     assert(index >= 0 && index < this.inputs.length)
     assert(prev instanceof bcoin.script)
     assert(typeof value === 'number')
@@ -59,14 +75,21 @@ export const patchTransaction = function (bcoin) {
     if (version === 0) return this.signatureHashV0(index, prev, type, hashType)
 
     // Segwit sighashing
-    if (version === 1) return this.signatureHashV1(index, prev, value, type, hashType)
+    if (version === 1) {
+      return this.signatureHashV1(index, prev, value, type, hashType)
+    }
 
     throw new Error('Unknown sighash version.')
   }
 
   // Patch signatureHashV0
   // Allows for the passing of `hashType`
-  txProto.signatureHashV0 = function (index, prev, type, hashType = defaultHashType) {
+  txProto.signatureHashV0 = function (
+    index,
+    prev,
+    type,
+    hashType = defaultHashType
+  ) {
     if ((type & 0x1f) === hashType.SINGLE) {
       // Bitcoind used to return 1 as an error code:
       // it ended up being treated like a hash.
@@ -158,7 +181,13 @@ export const patchTransaction = function (bcoin) {
   }
   // Patch signatureHashV1
   // Allows for the passing of `hashType`
-  txProto.signatureHashV1 = function (index, prev, value, type, hashType = defaultHashType) {
+  txProto.signatureHashV1 = function (
+    index,
+    prev,
+    value,
+    type,
+    hashType = defaultHashType
+  ) {
     const input = this.inputs[index]
     let prevouts = bcoin.utils.encoding.ZERO_HASH
     let sequences = bcoin.utils.encoding.ZERO_HASH
@@ -190,10 +219,7 @@ export const patchTransaction = function (bcoin) {
       }
     }
 
-    if (
-      (type & 0x1f) !== hashType.SINGLE &&
-      (type & 0x1f) !== hashType.NONE
-    ) {
+    if ((type & 0x1f) !== hashType.SINGLE && (type & 0x1f) !== hashType.NONE) {
       if (this._hashOutputs) {
         outputs = this._hashOutputs
       } else {

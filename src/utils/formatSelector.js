@@ -8,7 +8,10 @@ import { addressToScriptHash, setKeyType } from '../utils/coinUtils.js'
 const { Buffer } = buffer
 const witScale = consensus.WITNESS_SCALE_FACTOR
 
-export const getAllAddresses = (privateKeys: Array<string>, network: string) => {
+export const getAllAddresses = (
+  privateKeys: Array<string>,
+  network: string
+) => {
   const addressesPromises = []
   for (const bip of SUPPORTED_BIPS) {
     for (const key of privateKeys) {
@@ -21,7 +24,10 @@ export const getAllAddresses = (privateKeys: Array<string>, network: string) => 
 
 export const SUPPORTED_BIPS = ['bip32', 'bip44', 'bip49', 'bip84']
 
-export const FormatSelector = (bipStr: string = 'bip32', network: string = 'main') => {
+export const FormatSelector = (
+  bipStr: string = 'bip32',
+  network: string = 'main'
+) => {
   if (!SUPPORTED_BIPS.includes(bipStr)) throw new Error('Unknown bip type')
   const bip = parseInt(bipStr.split('bip')[1])
 
@@ -31,47 +37,42 @@ export const FormatSelector = (bipStr: string = 'bip32', network: string = 'main
   const witness = bip === 49 || bip === 84
 
   const setKeyTypeWrap = (key: any) => setKeyType(key, nested, witness, network)
-  const addressFromKey = (key: any) => setKeyTypeWrap(key).then(key => {
-    const address = key.getAddress().toString()
-    return addressToScriptHash(address)
-      .then(scriptHash => ({ address, scriptHash }))
-  })
+  const addressFromKey = (key: any) =>
+    setKeyTypeWrap(key).then(key => {
+      const address = key.getAddress().toString()
+      return addressToScriptHash(address).then(scriptHash => ({
+        address,
+        scriptHash
+      }))
+    })
 
   return {
     addressFromKey,
     branches: branches.slice(1),
     setKeyType: setKeyTypeWrap,
 
-    addressFromSecret: (key: any) => addressFromKey(
-      primitives.KeyRing.fromSecret(key, network)
-    ),
+    addressFromSecret: (key: any) =>
+      addressFromKey(primitives.KeyRing.fromSecret(key, network)),
 
-    parseSeed: bip === 32
-      ? (seed: string) => Buffer.from(seed, 'base64').toString('hex')
-      : (seed: string) => seed,
+    parseSeed:
+      bip === 32
+        ? (seed: string) => Buffer.from(seed, 'base64').toString('hex')
+        : (seed: string) => seed,
 
-    createMasterPath: (
-      account: number,
-      coinType: number
-    ) => bip === 32
-      ? 'm/0'
-      : `m/${bip}'/${
-        coinType >= 0 ? coinType : Network.get(network).keyPrefix.coinType
-      }'/${account}'`,
+    createMasterPath: (account: number, coinType: number) =>
+      bip === 32
+        ? 'm/0'
+        : `m/${bip}'/${
+          coinType >= 0 ? coinType : Network.get(network).keyPrefix.coinType
+        }'/${account}'`,
 
-    deriveAddress: (
-      parentKey: any,
-      index: number
-    ): Promise<any> => Promise
-      .resolve(parentKey.derive(index))
-      .then(key => addressFromKey(key)),
+    deriveAddress: (parentKey: any, index: number): Promise<any> =>
+      Promise.resolve(parentKey.derive(index)).then(key => addressFromKey(key)),
 
-    deriveKeyRing: (
-      parentKey: any,
-      index: number
-    ): Promise<any> => Promise
-      .resolve(parentKey.derive(index))
-      .then(derivedKey => setKeyTypeWrap(derivedKey)),
+    deriveKeyRing: (parentKey: any, index: number): Promise<any> =>
+      Promise.resolve(parentKey.derive(index)).then(derivedKey =>
+        setKeyTypeWrap(derivedKey)
+      ),
 
     keysFromRaw: (rawKeys: any = {}) =>
       branches.reduce((keyRings, branch) => {
