@@ -1,12 +1,7 @@
 // @flow
 import type { EdgeCurrencyInfo } from 'edge-core-js'
 import { patchTransaction } from './replayProtaction.js'
-import {
-  patchDerivePublic,
-  patchDerivePrivate,
-  patchDerivePath,
-  patchPrivateFromMnemonic
-} from './deriveExtender.js'
+import { secp256k1Patch, pbkdf2Patch } from './patchHDKeys.js'
 
 let cryptoPatched = false
 let replayProtactionPatched = false
@@ -29,13 +24,11 @@ export const bcoinExtender = (
   }
   if (!cryptoPatched) {
     if (secp256k1) {
-      patchDerivePublic(bcoin, secp256k1)
-      patchDerivePrivate(bcoin, secp256k1)
-      patchDerivePath(bcoin)
+      secp256k1Patch(bcoin, secp256k1)
       cryptoPatched = true
     }
     if (pbkdf2) {
-      patchPrivateFromMnemonic(bcoin, pbkdf2)
+      pbkdf2Patch(bcoin, pbkdf2)
       cryptoPatched = true
     }
   }
