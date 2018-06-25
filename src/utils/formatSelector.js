@@ -51,7 +51,7 @@ export const FormatSelector = (
     branches: branches.slice(1),
     setKeyType: setKeyTypeWrap,
 
-    addressFromSecret: (key: any) => Promise
+    addressFromSecret: (key: any): Promise<any> => Promise
       .resolve(primitives.KeyRing.fromSecret(key, network))
       .then(keyObj => addressFromKey(keyObj)),
 

@@ -281,7 +281,7 @@ export class KeyManager {
   async sign (mtx: any, privateKeys: Array<string> = []) {
     const keyRings = []
     for (const key of privateKeys) {
-      const privKey = bcoin.primitives.KeyRing.fromSecret(key, this.network)
+      const privKey = await bcoin.primitives.KeyRing.fromSecret(key, this.network)
       keyRings.push(privKey)
     }
     if (!keyRings.length) {

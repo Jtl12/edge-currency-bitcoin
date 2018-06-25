@@ -112,6 +112,10 @@ export const secp256k1Patch = function (bcoin, secp256k1) {
   // Patch From Seed to use async version of secp256k1
   privateKey.fromSeed = async function (seed, network) {
     assert(Buffer.isBuffer(seed))
+    // console.warn(seed.length, network)
+    // console.warn(seed.length * 8, network)
+    // console.warn(bcoin.hd.common.MIN_ENTROPY)
+    // console.warn(bcoin.hd.common.MAX_ENTROPY)
 
     if (
       (seed.length * 8 < bcoin.hd.common.MIN_ENTROPY) ||

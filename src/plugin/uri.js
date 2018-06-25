@@ -28,7 +28,8 @@ const parsePathname = (pathname: string, network: string) => {
   } catch (e) {}
   // Check if the pathname type is a wif
   try {
-    bcoin.primitives.KeyRing.fromSecret(pathname, network)
+    const a = bcoin.primitives.KeyRing.fromSecret(pathname, network)
+    console.warn('bcoin.primitives.KeyRing.fromSecret(pathname, network)', a)
     return { privateKeys: [pathname] }
   } catch (e) {}
   // If the pathname is non of the above, then assume it's an address and check for validity
