@@ -43,7 +43,7 @@ export const bitcoincashInfo: EdgeCurrencyInfo = {
       },
       replayProtaction: {
         SIGHASH_FORKID: 0x40,
-        txVersion: 1,
+        forcedMinVersion: 1,
         forkId: 0
       }
     },

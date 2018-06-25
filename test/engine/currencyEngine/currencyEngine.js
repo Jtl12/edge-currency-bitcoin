@@ -12,7 +12,7 @@ import dummyAddressData from './dummyAddressData.json'
 import dummyHeadersData from './dummyHeadersData.json'
 import dummyTransactionsData from './dummyTransactionsData.json'
 import fixtures from './fixtures.json'
-console.log = () => {}
+
 const DATA_STORE_FOLDER = 'txEngineFolderBTC'
 
 for (const fixture of fixtures) {

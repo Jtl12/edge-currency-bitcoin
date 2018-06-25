@@ -1174,7 +1174,7 @@ ecc-jsbn@~0.1.1:
 
 "edge-core-js@git+https://github.com/Airbitz/edge-core-js#develop":
   version "0.9.6"
-  resolved "git+https://github.com/Airbitz/edge-core-js#cfd9c00e849d403fd18a226b8dfcff4e69b59264"
+  resolved "git+https://github.com/Airbitz/edge-core-js#b059ff6436b5968b11700efd1812dcc8fa9c0028"
   dependencies:
     aes-js "^3.1.0"
     base-x "^1.0.4"

@@ -37,11 +37,6 @@ export const bitcoinTestnetInfo: EdgeCurrencyInfo = {
         witnesspubkeyhash: 0x03,
         witnessscripthash: 0x28,
         bech32: 'tb'
-      },
-      replayProtaction: {
-        SIGHASH_FORKID: 0x40,
-        forcedMinVersion: 1,
-        forkId: 0
       }
     },
     customFeeSettings: ['satPerByte'],
