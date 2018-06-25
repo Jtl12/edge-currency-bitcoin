@@ -51,7 +51,7 @@ export const patchTransaction = function (bcoin) {
     const bw = new bcoin.utils.StaticWriter(sig.length + 1)
 
     bw.writeBytes(sig)
-    bw.writeU8(type)
+    bw.writeU8(forkedType)
 
     return bw.render()
   }
